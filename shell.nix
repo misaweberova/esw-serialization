@@ -1,6 +1,10 @@
-with (import <nixpkgs> {});
+let
+  sources = import ./npins;
+  pkgs = import sources.nixpkgs {};
+in
+with pkgs;
 mkShell {
-  buildInputs = [
+  packages = [
     pkg-config
     meson
     ninja
