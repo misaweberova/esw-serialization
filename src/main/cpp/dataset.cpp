@@ -56,7 +56,7 @@ void Dataset::Deserialize(Json::Value &root)
 
         std::vector<double> data;
         const Json::Value& typeV = recordsJ[typeS];
-        for (int i = 0; i < typeV.size(); i++){
+        for (unsigned i = 0; i < typeV.size(); i++){
             data.push_back(typeV[i].asDouble());
         }
 
