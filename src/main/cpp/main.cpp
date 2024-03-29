@@ -47,7 +47,10 @@ void processJSON(tcp::iostream& stream){
     /* Send the result back */
     std::string output = writer.write(out);
     stream << output;
-    cout << output;
+    if (!getenv("ESW_JSON_QUIET"))
+        cout << output;
+    else
+        cout << "Quiet operation enabled" << endl;
 }
 
 void processAvro(tcp::iostream& stream){
