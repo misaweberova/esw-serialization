@@ -57,11 +57,21 @@ void processJSON(tcp::iostream &stream)
 void processAvro(tcp::iostream &stream)
 {
    throw std::logic_error("TODO: Implement avro");
+   /* Read data from stream */
+   /* Unserialize data */
+   /* Calculate averages */
+   /* Serialize averages */
+   /* Send the result back */
 }
 
 void processProtobuf(tcp::iostream &stream)
 {
    throw std::logic_error("TODO: Implement protobuf");
+   /* Read data from stream */
+   /* Unserialize data */
+   /* Calculate averages */
+   /* Serialize averages */
+   /* Send the result back */
 }
 
 int main(int argc, char *argv[])
