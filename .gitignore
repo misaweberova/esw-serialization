@@ -81,3 +81,6 @@ buildNumber.properties
 .classpath
 
 # End of https://www.toptal.com/developers/gitignore/api/java,maven,c++
+
+# Ignore VS Code settings
+.vscode/settings.json
