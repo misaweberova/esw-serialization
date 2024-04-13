@@ -84,10 +84,39 @@ void processAvro(tcp::iostream &stream)
    avro::decode(*decoder, request);
 
    for (auto curr : request.requestTuple) {
+
+      /* Get records data from request (download, upload and ping) */
+      double download_count = 0;
+      double upload_count = 0;
+      double ping_count = 0;
+
+      for (unsigned j = 0; j < curr.records.DOWNLOAD.size(); j++) {
+         download_count += curr.records.DOWNLOAD[j];
+         upload_count += curr.records.UPLOAD[j];
+         ping_count += curr.records.PING[j];
+      }
+
+      /* Calculate averages */
+      a::AAverage average;
+      average.DOWNLOAD = download_count / curr.records.DOWNLOAD.size();
+      average.UPLOAD = upload_count / curr.records.UPLOAD.size();
+      average.PING = ping_count / curr.records.PING.size();
+
+      /* Serialize averages */
+      a::AResponseTuple tmp;
+      tmp.average = average;
+      tmp.measurementInfo = curr.measurementInfo;
+      response.responseTuple.push_back(tmp);
    }
-   /* Calculate averages */
-   /* Serialize averages */
+
    /* Send the result back */
+   std::unique_ptr<avro::OutputStream> outStream =
+       avro::ostreamOutputStream(stream);
+   avro::EncoderPtr encoder = avro::binaryEncoder();
+   encoder->init(*outStream);
+
+   avro::encode(*encoder, response);
+   encoder->flush();
 
    delete[] buff;
 }
