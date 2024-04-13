@@ -3,3 +3,43 @@ package esw;
 
 option java_package = "cz.esw.serialization.proto";
 option java_multiple_files = true;
+
+/* measurementinfo.h */
+message MeasurementInfo {
+  int32 id = 1;
+  int64 timestamp = 2;
+  string measurerName = 3;
+}
+
+/* Client request */
+message MeasurementsRequest { // described in dataset.h
+  repeated RequestTuple requestTuple = 1;
+
+  message RequestTuple {
+    MeasurementInfo measurementInfo = 1;
+    Records records = 2;
+  }
+}
+
+message Records {
+  repeated double Download = 1;
+  repeated double Upload = 2;
+  repeated double Ping = 3;
+}
+
+/* Server response */
+message MeasurementsResponse { // described in result.h
+  repeated ResponseTuple responseTuple = 1;
+
+  message ResponseTuple {
+    MeasurementInfo measurementInfo = 1;
+    Average average = 2;
+  }
+}
+
+message Average {
+  double Download = 1;
+  double Upload = 2;
+  double Ping = 3;
+}
+
