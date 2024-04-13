@@ -10,6 +10,8 @@
 
 #include "cpx.hh"
 #include <memory>
+#include <arpa/inet.h>
+#include "measurements.pb.h"
 
 using namespace std;
 using boost::asio::ip::tcp;
