@@ -8,6 +8,9 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/asio.hpp>
 
+#include "cpx.hh"
+#include <memory>
+
 using namespace std;
 using boost::asio::ip::tcp;
 
@@ -57,11 +60,36 @@ void processJSON(tcp::iostream &stream)
 void processAvro(tcp::iostream &stream)
 {
    throw std::logic_error("TODO: Implement avro");
+
+   /* Get message size */
+   unsigned int message_size;
+   char size_bytes[4];
+   stream.read(size_bytes, 4);
+   std::memcpy(&message_size, size_bytes, sizeof(int));
+   message_size = ntohl(message_size);
+
    /* Read data from stream */
+   char *buff = new char[message_size];
+   stream.read(buff, message_size);
+
+   a::AMeasurementsResponse response;
+   a::AMeasurementsRequest request;
+
+   std::unique_ptr<avro::InputStream> stream_in_p =
+       avro::memoryInputStream((uint8_t *)buffer, message_size);
+   avro::DecoderPtr decoder = avro::binaryDecoder();
+   decoder->init(*stream_in_p);
+
    /* Unserialize data */
+   avro::decode(*decoder, request);
+
+   for (auto curr : request.requestTuple) {
+   }
    /* Calculate averages */
    /* Serialize averages */
    /* Send the result back */
+
+   delete[] buff;
 }
 
 void processProtobuf(tcp::iostream &stream)
