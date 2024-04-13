@@ -12,7 +12,7 @@ message MeasurementInfo {
 }
 
 /* Client request */
-message MeasurementsRequest { // described in dataset.h
+message PMeasurementsRequest { // described in dataset.h
   repeated RequestTuple requestTuple = 1;
 
   message RequestTuple {
@@ -28,7 +28,7 @@ message Records {
 }
 
 /* Server response */
-message MeasurementsResponse { // described in result.h
+message PMeasurementsResponse { // described in result.h
   repeated ResponseTuple responseTuple = 1;
 
   message ResponseTuple {

@@ -59,7 +59,7 @@ void processJSON(tcp::iostream &stream)
 
 void processAvro(tcp::iostream &stream)
 {
-   throw std::logic_error("TODO: Implement avro");
+   // throw std::logic_error("TODO: Implement avro");
 
    /* Get message size */
    unsigned int message_size;
@@ -123,12 +123,65 @@ void processAvro(tcp::iostream &stream)
 
 void processProtobuf(tcp::iostream &stream)
 {
-   throw std::logic_error("TODO: Implement protobuf");
+   // throw std::logic_error("TODO: Implement protobuf");
+
+   /* Get message size */
+   unsigned int message_size;
+   char size_bytes[4];
+   stream.read(size_bytes, 4);
+   std::memcpy(&message_size, size_bytes, sizeof(int));
+   message_size = ntohl(message_size);
+
    /* Read data from stream */
+   char *buff = new char[message_size];
+   stream.read(buff, message_size);
+
+   esw::PMeasurementsResponse response;
+   esw::PMeasurementsRequest request;
+   request.ParseFromArray(buff, message_size);
+
    /* Unserialize data */
-   /* Calculate averages */
-   /* Serialize averages */
-   /* Send the result back */
+   avro::decode(*decoder, request);
+
+   for (int i = 0; i < request.requesttuple_size(); ++i) {
+
+      const esw::PMeasurementsRequest_RequestTuple &requestTuple =
+          request.requesttuple(i);
+      /* Get records data from request (download, upload and ping) */
+      const esw::Records &records = requestTuple.records();
+      double download_count = 0;
+      double upload_count = 0;
+      double ping_count = 0;
+
+      for (int j = 0; j < records.download_size(); ++j) {
+         download_count += records.download(j);
+         upload_count += records.upload(j);
+         ping_count += records.ping(j);
+      }
+
+      /* Calculate averages */
+      auto *averages = new esw::Average();
+      averages->set_download(downloads / records.download_size());
+      averages->set_upload(uploads / records.upload_size());
+      averages->set_ping(pings / records.ping_size());
+
+      /* Recreate measurement info*/
+      auto *info = new esw::MeasurementInfo();
+      info->set_id(requestTuple.measurementinfo().id());
+      info->set_timestamp(requestTuple.measurementinfo().timestamp());
+      info->set_measurername(requestTuple.measurementinfo().measurername());
+
+      /* Create result with computed average */
+      esw::MeasurementsResponse_ResponseTuple *responseTuple =
+          response.add_responsetuple();
+      responseTuple->set_allocated_measurementinfo(info);
+      responseTuple->set_allocated_average(averages);
+   }
+
+   /* Serialize averages & send the result back */
+   response.SerializeToOstream(&stream);
+
+   delete[] buff;
 }
 
 int main(int argc, char *argv[])
