@@ -1,9 +1,0 @@
-/**
- * Protocol in Avro IDL
- *
- * WARNING: avrogencpp accepts only Avro Schema (.avsc) files. Therefore, you need to define directly the schema,
- * or you can use avro-tools to convert IDL to the schema (or IDEA Avro plugin supports the conversion).
- */
-@namespace("cz.esw.serialization.avro")
-protocol Protocol {
-}
