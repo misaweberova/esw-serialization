@@ -8,9 +8,10 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/asio.hpp>
 
-#include "cpx.hh"
 #include <memory>
 #include <arpa/inet.h>
+
+#include "cpx.hh"
 #include "measurements.pb.h"
 
 using namespace std;
@@ -74,11 +75,11 @@ void processAvro(tcp::iostream &stream)
    char *buff = new char[message_size];
    stream.read(buff, message_size);
 
-   a::AMeasurementsResponse response;
-   a::AMeasurementsRequest request;
+   c::AMeasurementsResponse response;
+   c::AMeasurementsRequest request;
 
    std::unique_ptr<avro::InputStream> stream_in_p =
-       avro::memoryInputStream((uint8_t *)buffer, message_size);
+       avro::memoryInputStream((uint8_t *)buff, message_size);
    avro::DecoderPtr decoder = avro::binaryDecoder();
    decoder->init(*stream_in_p);
 
@@ -99,13 +100,13 @@ void processAvro(tcp::iostream &stream)
       }
 
       /* Calculate averages */
-      a::AAverage average;
+      c::AAverage average;
       average.DOWNLOAD = download_count / curr.records.DOWNLOAD.size();
       average.UPLOAD = upload_count / curr.records.UPLOAD.size();
       average.PING = ping_count / curr.records.PING.size();
 
       /* Serialize averages */
-      a::AResponseTuple tmp;
+      c::AResponseTuple tmp;
       tmp.average = average;
       tmp.measurementInfo = curr.measurementInfo;
       response.responseTuple.push_back(tmp);
@@ -140,10 +141,9 @@ void processProtobuf(tcp::iostream &stream)
 
    esw::PMeasurementsResponse response;
    esw::PMeasurementsRequest request;
-   request.ParseFromArray(buff, message_size);
-
+   
    /* Unserialize data */
-   avro::decode(*decoder, request);
+   request.ParseFromArray(buff, message_size);
 
    for (int i = 0; i < request.requesttuple_size(); ++i) {
 
@@ -163,9 +163,9 @@ void processProtobuf(tcp::iostream &stream)
 
       /* Calculate averages */
       auto *averages = new esw::Average();
-      averages->set_download(downloads / records.download_size());
-      averages->set_upload(uploads / records.upload_size());
-      averages->set_ping(pings / records.ping_size());
+      averages->set_download(download_count / records.download_size());
+      averages->set_upload(upload_count / records.upload_size());
+      averages->set_ping(ping_count / records.ping_size());
 
       /* Recreate measurement info*/
       auto *info = new esw::MeasurementInfo();
@@ -174,7 +174,7 @@ void processProtobuf(tcp::iostream &stream)
       info->set_measurername(requestTuple.measurementinfo().measurername());
 
       /* Create result with computed average */
-      esw::MeasurementsResponse_ResponseTuple *responseTuple =
+      esw::PMeasurementsResponse_ResponseTuple *responseTuple =
           response.add_responsetuple();
       responseTuple->set_allocated_measurementinfo(info);
       responseTuple->set_allocated_average(averages);
