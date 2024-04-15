@@ -24,8 +24,9 @@ public class ProtoDataHandler implements DataHandler {
     private OutputStream os;
 
     private List<MeasurementInfo> measurementInfoList;
-
-    protected Map<Integer, Records> datasets;
+    private Map<Integer, List<Double>> downloadData;
+    private Map<Integer, List<Double>> pingData;
+    private Map<Integer, List<Double>> uploadData;
 
 
     public ProtoDataHandler(InputStream is, OutputStream os) {
@@ -35,8 +36,10 @@ public class ProtoDataHandler implements DataHandler {
 
     @Override
     public void initialize() {
-        datasets = new HashMap<>();
         measurementInfoList = new ArrayList<>();
+        downloadData = new HashMap<>();
+        pingData = new HashMap<>();
+        uploadData = new HashMap<>();
     }
 
     @Override
@@ -48,24 +51,20 @@ public class ProtoDataHandler implements DataHandler {
                 .build();
 		measurementInfoList.add(measurementInfo);
         Records records = Records.newBuilder().build();
-        datasets.put(datasetId, records);
     }
 
     @Override
     public void handleValue(int datasetId, DataType type, double value) {
-        Records dataset = datasets.get(datasetId);
-        if (dataset == null) {
-            throw new IllegalArgumentException("Dataset with id " + datasetId + " not initialized.");
-        }
-
-        if(type.equals(DataType.DOWNLOAD)) {
-            dataset.getDownloadList().add(value);
-        }
-        else if(type.equals(DataType.PING)) {
-            dataset.getPingList().add(value);
-        }
-        else {
-            dataset.getUploadList().add(value);
+        switch (type) {
+            case DOWNLOAD:
+                downloadData.computeIfAbsent(datasetId, k -> new ArrayList<>()).add(value);
+                break;
+            case PING:
+                pingData.computeIfAbsent(datasetId, k -> new ArrayList<>()).add(value);
+                break;
+            case UPLOAD:
+                uploadData.computeIfAbsent(datasetId, k -> new ArrayList<>()).add(value);
+                break;
         }
     }
 
@@ -74,7 +73,12 @@ public class ProtoDataHandler implements DataHandler {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
         for (MeasurementInfo measurementInfo : measurementInfoList) {
-            Records records = datasets.get(measurementInfo.getId());
+            Integer id = measurementInfo.getId();
+            Records records = Records.newBuilder()
+                    .addAllDownload(downloadData.getOrDefault(id, new ArrayList<>()))
+                    .addAllPing(pingData.getOrDefault(id, new ArrayList<>()))
+                    .addAllUpload(uploadData.getOrDefault(id, new ArrayList<>()))
+                    .build();
             PMeasurementsRequest.RequestTuple requestTuple = PMeasurementsRequest.RequestTuple.newBuilder()
                     .setRecords(records)
                     .setMeasurementInfo(measurementInfo)
