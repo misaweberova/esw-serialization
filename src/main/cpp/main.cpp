@@ -11,7 +11,7 @@
 #include <memory>
 #include <arpa/inet.h>
 
-#include "cpx.hh"
+#include "measurements.hh"
 #include "measurements.pb.h"
 
 using namespace std;

@@ -17,6 +17,13 @@ for example:
 
     ./builddir/src/main/cpp/server 12345 json
 
+#### Build code for serialization
+
+```sh
+protoc --proto_path=src/main/proto --cpp_out=src/main/cpp/ src/main/proto/measurements.proto # proto
+avrogencpp -i src/main/avro/measurements.avsc -o cpx.hh  -n c # avro (class name c)
+```
+
 ### Java Client Component
 
 To build the Java part of the project, install JDK 17 or higher or use nix shell:
@@ -37,5 +44,3 @@ for example:
 
 Or use any IDE and import it as a maven project and to see how it works for JSON run `AppTest.java`.
     
-
-

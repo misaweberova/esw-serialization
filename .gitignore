@@ -84,3 +84,6 @@ buildNumber.properties
 
 # Ignore VS Code settings
 .vscode/settings.json
+**/cpp/measurements.hh
+**/cpp/measurements.pb.cc
+**/cpp/measurements.pb.h
