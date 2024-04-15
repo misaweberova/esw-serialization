@@ -72,7 +72,7 @@ public class AvroDataHandler implements DataHandler {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         DatumWriter<ARequestTuple> datumWriter = new SpecificDatumWriter<>(ARequestTuple.class);
         DataFileWriter<ARequestTuple> fileWriter = new DataFileWriter<>(datumWriter);
-        fileWriter.create(datasets.values().iterator().next().getSchema(), baos);
+        fileWriter.create(ARequestTuple.getClassSchema(), baos);
 
         for(AMeasurementInfo measurementInfo : measurementInfoList) {
             ARecords aRecords = datasets.get(measurementInfo.getId());
@@ -81,6 +81,7 @@ public class AvroDataHandler implements DataHandler {
         }
 
         fileWriter.close();
+
         byte[] dataBytes = baos.toByteArray();
 
         ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
