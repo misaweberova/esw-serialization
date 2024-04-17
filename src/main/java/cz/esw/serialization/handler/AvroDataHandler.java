@@ -11,8 +11,10 @@ import org.apache.avro.file.DataFileStream;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.io.DatumReader;
 import org.apache.avro.io.DatumWriter;
+import org.apache.avro.io.EncoderFactory;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.avro.specific.SpecificDatumWriter;
+import org.apache.avro.io.BinaryEncoder;
 
 
 import java.io.*;
@@ -71,27 +73,24 @@ public class AvroDataHandler implements DataHandler {
     public void getResults(ResultConsumer consumer) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         DatumWriter<ARequestTuple> datumWriter = new SpecificDatumWriter<>(ARequestTuple.class);
-        DataFileWriter<ARequestTuple> fileWriter = new DataFileWriter<>(datumWriter);
-        fileWriter.create(ARequestTuple.getClassSchema(), baos);
+        BinaryEncoder encoder =
+                EncoderFactory.get().binaryEncoder(baos , null);
 
         for(AMeasurementInfo measurementInfo : measurementInfoList) {
             ARecords aRecords = datasets.get(measurementInfo.getId());
             ARequestTuple requestTuple = new ARequestTuple(aRecords, measurementInfo);
-            fileWriter.append(requestTuple);
+            datumWriter.write(requestTuple, encoder);
+            encoder.flush();
+            byte[] dataBytes = baos.toByteArray();
+            ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
+            lengthBuffer.putInt(dataBytes.length);
+            System.out.println("Data bytes " + dataBytes.length);
+            for(int i = 0; i != 4; ++i) {
+                System.out.println(lengthBuffer.get(i));
+            }
+            os.write(lengthBuffer.array());
+            os.write(dataBytes);
         }
-
-        fileWriter.close();
-
-        byte[] dataBytes = baos.toByteArray();
-
-        ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
-        lengthBuffer.putInt(dataBytes.length);
-
-        // Write the length of the message in bytes
-        os.write(lengthBuffer.array());
-
-        // Write the data
-        os.write(dataBytes);
 
         // Receive response from server
         DatumReader<AResponseTuple> resultsReader = new SpecificDatumReader<>(AResponseTuple.class);
