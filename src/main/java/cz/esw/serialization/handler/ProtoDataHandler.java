@@ -2,32 +2,28 @@ package cz.esw.serialization.handler;
 
 import cz.esw.serialization.ResultConsumer;
 import cz.esw.serialization.json.DataType;
-import cz.esw.serialization.proto.MeasurementInfo;
-import cz.esw.serialization.proto.PMeasurementsRequest;
-import cz.esw.serialization.proto.PMeasurementsResponse;
-import cz.esw.serialization.proto.Records;
 
-import java.io.*;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.nio.ByteBuffer;
+import cz.esw.serialization.json.Dataset;
+import cz.esw.serialization.json.MeasurementInfo;
+
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.*;
+
+import cz.esw.serialization.proto.PBInfo;
+import cz.esw.serialization.proto.PBMeasurement;
+import cz.esw.serialization.proto.PBMeasurementArray;
+import cz.esw.serialization.proto.PBAvgData;
+import cz.esw.serialization.proto.PBAvgDataArray;
 
 /**
  * @author Marek Cuchý (CVUT)
  */
 public class ProtoDataHandler implements DataHandler {
 
-    private InputStream is;
-
-    private OutputStream os;
-
-    private List<MeasurementInfo> measurementInfoList;
-    private Map<Integer, List<Double>> downloadData;
-    private Map<Integer, List<Double>> pingData;
-    private Map<Integer, List<Double>> uploadData;
-
+    private final InputStream is;
+    private final OutputStream os;
+    protected Map<Integer, Dataset> datasets;
 
     public ProtoDataHandler(InputStream is, OutputStream os) {
         this.is = is;
@@ -36,72 +32,91 @@ public class ProtoDataHandler implements DataHandler {
 
     @Override
     public void initialize() {
-        measurementInfoList = new ArrayList<>();
-        downloadData = new HashMap<>();
-        pingData = new HashMap<>();
-        uploadData = new HashMap<>();
+        datasets = new HashMap<>();
     }
 
     @Override
     public void handleNewDataset(int datasetId, long timestamp, String measurerName) {
-        MeasurementInfo measurementInfo = MeasurementInfo.newBuilder()
-                .setId(datasetId)
-                .setTimestamp(timestamp)
-                .setMeasurerName(measurerName)
-                .build();
-		measurementInfoList.add(measurementInfo);
-        Records records = Records.newBuilder().build();
+        MeasurementInfo info = new MeasurementInfo(datasetId, timestamp, measurerName);
+        Map<DataType, List<Double>> recordMap = new EnumMap<>(DataType.class);
+
+        datasets.put(datasetId, new Dataset(info, recordMap));
     }
 
     @Override
     public void handleValue(int datasetId, DataType type, double value) {
-        switch (type) {
-            case DOWNLOAD:
-                downloadData.computeIfAbsent(datasetId, k -> new ArrayList<>()).add(value);
-                break;
-            case PING:
-                pingData.computeIfAbsent(datasetId, k -> new ArrayList<>()).add(value);
-                break;
-            case UPLOAD:
-                uploadData.computeIfAbsent(datasetId, k -> new ArrayList<>()).add(value);
-                break;
+        Dataset dataset = datasets.get(datasetId);
+        if (dataset == null) {
+            throw new IllegalArgumentException("Dataset with id " + datasetId + " not initialized.");
         }
+        dataset.getRecords().computeIfAbsent(type, t -> new ArrayList<>()).add(value);
     }
 
     @Override
-    public void getResults(ResultConsumer consumer) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    public void getResults(ResultConsumer consumer) {
+        PBMeasurementArray.Builder measurementArrayBuilder = PBMeasurementArray.newBuilder();
 
-        for (MeasurementInfo measurementInfo : measurementInfoList) {
-            Integer id = measurementInfo.getId();
-            Records records = Records.newBuilder()
-                    .addAllDownload(downloadData.getOrDefault(id, new ArrayList<>()))
-                    .addAllPing(pingData.getOrDefault(id, new ArrayList<>()))
-                    .addAllUpload(uploadData.getOrDefault(id, new ArrayList<>()))
+        datasets.forEach((datasetid, dataset) -> {
+            MeasurementInfo measurementInfo = dataset.getInfo();
+            PBInfo info = PBInfo.newBuilder()
+                    .setId(measurementInfo.id())
+                    .setMeasurerName(measurementInfo.measurerName())
+                    .setTimestamp(measurementInfo.timestamp())
                     .build();
-            PMeasurementsRequest.RequestTuple requestTuple = PMeasurementsRequest.RequestTuple.newBuilder()
-                    .setRecords(records)
-                    .setMeasurementInfo(measurementInfo)
-                    .build();
-            requestTuple.writeDelimitedTo(baos);
+
+            List<Double> downloadList = dataset.getRecords().get(DataType.DOWNLOAD);
+            List<Double> uploadList = dataset.getRecords().get(DataType.UPLOAD);
+            List<Double> pingList = dataset.getRecords().get(DataType.PING);
+
+            PBMeasurement.Builder measurementBuilder = PBMeasurement.newBuilder()
+                    .setInfo(info);
+
+            measurementBuilder.addAllDownload(downloadList);
+            measurementBuilder.addAllUpload(uploadList);
+            measurementBuilder.addAllPing(pingList);
+
+            PBMeasurement measurement = measurementBuilder.build();
+
+            measurementArrayBuilder.addDatasets(measurement);
+        });
+
+        PBMeasurementArray measurementArray = measurementArrayBuilder.build();
+        int messageSize = 0;
+        try {
+            messageSize = measurementArray.getSerializedSize();
+            os.write((messageSize >>> 24) & 0xFF);
+            os.write((messageSize >>> 16) & 0xFF);
+            os.write((messageSize >>> 8) & 0xFF);
+            os.write(messageSize & 0xFF);
+            measurementArray.writeTo(os);
+        } catch (Exception e) {
+            System.err.println(e);
         }
+        System.out.println("Sending bytes: " + messageSize);
+        try {
+            byte[] byteArray = new byte[4];
 
-        byte[] dataBytes = baos.toByteArray();
+            is.read(byteArray);
+            int recvCount = 0;
+            for (int i = 0; i < 4; i++) {
+                recvCount |= (byteArray[i] & 0xFF) << (8 * i);
+            }
 
-        ByteArrayOutputStream messageSizeStream = new ByteArrayOutputStream();
-        messageSizeStream.write(ByteBuffer.allocate(4).putInt(dataBytes.length).array());
-        os.write(messageSizeStream.toByteArray());
-
-        os.write(dataBytes);
-        os.flush();
-
-        PMeasurementsResponse.ResponseTuple responseTuple;
-        while ((responseTuple = PMeasurementsResponse.ResponseTuple.parseDelimitedFrom(is)) != null) {
-            MeasurementInfo info = responseTuple.getMeasurementInfo();
-            consumer.acceptMeasurementInfo(info.getId(), info.getTimestamp(), info.getMeasurerName());
-            consumer.acceptResult(DataType.DOWNLOAD, responseTuple.getAverage().getDownload());
-            consumer.acceptResult(DataType.PING, responseTuple.getAverage().getPing());
-            consumer.acceptResult(DataType.UPLOAD, responseTuple.getAverage().getUpload());
+            while (is.available() < recvCount) {
+                Thread.sleep(100);
+            }
+            byte[] recv = new byte[recvCount];
+            System.out.println("Recieved bytes: " + is.read(recv));
+            PBAvgDataArray avgDataArray = PBAvgDataArray.parseFrom(recv);
+            for (PBAvgData avgData : avgDataArray.getDataArrayList()) {
+                consumer.acceptMeasurementInfo((int) avgData.getInfo().getId(), (long) avgData.getInfo().getTimestamp(),
+                        avgData.getInfo().getMeasurerName());
+                consumer.acceptResult(DataType.UPLOAD, avgData.getUpload());
+                consumer.acceptResult(DataType.DOWNLOAD, avgData.getDownload());
+                consumer.acceptResult(DataType.PING, avgData.getPing());
+            }
+        } catch (Exception e) {
+            System.err.println(e);
         }
     }
 }
