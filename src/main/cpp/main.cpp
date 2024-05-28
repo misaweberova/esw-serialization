@@ -8,11 +8,13 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/asio.hpp>
 
-#include <memory>
-#include <arpa/inet.h>
-
-#include "measurements.hh"
+#include "measurements.av.hh"
 #include "measurements.pb.h"
+
+#include <google/protobuf/util/delimited_message_util.h>
+
+#include <chrono>
+#include <thread>
 
 using namespace std;
 using boost::asio::ip::tcp;
@@ -60,130 +62,91 @@ void processJSON(tcp::iostream &stream)
       cout << "Quiet operation enabled" << endl;
 }
 
-void processAvro(tcp::iostream &stream)
+int readAndDecodeMessageSize(tcp::iostream &stream)
 {
-   // throw std::logic_error("TODO: Implement avro");
+   char sizeBuffer[4]; // Assuming 4 bytes for message size
+   stream.read(sizeBuffer, 4);
 
-   /* Get message size */
-   unsigned int message_size;
-   char size_bytes[4];
-   stream.read(size_bytes, 4);
-   std::memcpy(&message_size, size_bytes, sizeof(int));
-   message_size = ntohl(message_size);
-
-   /* Read data from stream */
-   char *buff = new char[message_size];
-   stream.read(buff, message_size);
-
-   c::AMeasurementsResponse response;
-   c::AMeasurementsRequest request;
-
-   std::unique_ptr<avro::InputStream> stream_in_p =
-       avro::memoryInputStream((uint8_t *)buff, message_size);
-   avro::DecoderPtr decoder = avro::binaryDecoder();
-   decoder->init(*stream_in_p);
-
-   /* Unserialize data */
-   avro::decode(*decoder, request);
-
-   for (auto curr : request.requestTuple) {
-
-      /* Get records data from request (download, upload and ping) */
-      double download_count = 0;
-      double upload_count = 0;
-      double ping_count = 0;
-
-      for (unsigned j = 0; j < curr.records.DOWNLOAD.size(); j++) {
-         download_count += curr.records.DOWNLOAD[j];
-         upload_count += curr.records.UPLOAD[j];
-         ping_count += curr.records.PING[j];
-      }
-
-      /* Calculate averages */
-      c::AAverage average;
-      average.DOWNLOAD = download_count / curr.records.DOWNLOAD.size();
-      average.UPLOAD = upload_count / curr.records.UPLOAD.size();
-      average.PING = ping_count / curr.records.PING.size();
-
-      /* Serialize averages */
-      c::AResponseTuple tmp;
-      tmp.average = average;
-      tmp.measurementInfo = curr.measurementInfo;
-      response.responseTuple.push_back(tmp);
+   if (stream.gcount() != 4) {
+      throw std::runtime_error("Failed to read message size");
    }
 
-   /* Send the result back */
-   std::unique_ptr<avro::OutputStream> outStream =
-       avro::ostreamOutputStream(stream);
-   avro::EncoderPtr encoder = avro::binaryEncoder();
-   encoder->init(*outStream);
+   int messageSize = (static_cast<unsigned char>(sizeBuffer[0]) << 24) |
+                     (static_cast<unsigned char>(sizeBuffer[1]) << 16) |
+                     (static_cast<unsigned char>(sizeBuffer[2]) << 8) |
+                     (static_cast<unsigned char>(sizeBuffer[3]));
+   return messageSize;
+}
 
-   avro::encode(*encoder, response);
-   encoder->flush();
-
-   delete[] buff;
+void processAvro(tcp::iostream &stream)
+{
+   throw std::logic_error("TODO: Implement avro");
 }
 
 void processProtobuf(tcp::iostream &stream)
 {
-   // throw std::logic_error("TODO: Implement protobuf");
+   // 1. Read incoming message
+   int messageSize = readAndDecodeMessageSize(stream);
+   std::vector<char> buffer(messageSize);
 
-   /* Get message size */
-   unsigned int message_size;
-   char size_bytes[4];
-   stream.read(size_bytes, 4);
-   std::memcpy(&message_size, size_bytes, sizeof(int));
-   message_size = ntohl(message_size);
-
-   /* Read data from stream */
-   char *buff = new char[message_size];
-   stream.read(buff, message_size);
-
-   esw::PMeasurementsResponse response;
-   esw::PMeasurementsRequest request;
-   
-   /* Unserialize data */
-   request.ParseFromArray(buff, message_size);
-
-   for (int i = 0; i < request.requesttuple_size(); ++i) {
-
-      const esw::PMeasurementsRequest_RequestTuple &requestTuple =
-          request.requesttuple(i);
-      /* Get records data from request (download, upload and ping) */
-      const esw::Records &records = requestTuple.records();
-      double download_count = 0;
-      double upload_count = 0;
-      double ping_count = 0;
-
-      for (int j = 0; j < records.download_size(); ++j) {
-         download_count += records.download(j);
-         upload_count += records.upload(j);
-         ping_count += records.ping(j);
-      }
-
-      /* Calculate averages */
-      auto *averages = new esw::Average();
-      averages->set_download(download_count / records.download_size());
-      averages->set_upload(upload_count / records.upload_size());
-      averages->set_ping(ping_count / records.ping_size());
-
-      /* Recreate measurement info*/
-      auto *info = new esw::MeasurementInfo();
-      info->set_id(requestTuple.measurementinfo().id());
-      info->set_timestamp(requestTuple.measurementinfo().timestamp());
-      info->set_measurername(requestTuple.measurementinfo().measurername());
-
-      /* Create result with computed average */
-      esw::PMeasurementsResponse_ResponseTuple *responseTuple =
-          response.add_responsetuple();
-      responseTuple->set_allocated_measurementinfo(info);
-      responseTuple->set_allocated_average(averages);
+   stream.read(buffer.data(), messageSize);
+   if (stream.gcount() != messageSize) {
+      throw std::runtime_error("Failed to read full message");
    }
 
-   /* Serialize averages & send the result back */
-   response.SerializeToOstream(&stream);
+   std::cout << "Received bytes: " << messageSize << std::endl;
 
-   delete[] buff;
+   // 2. Deserialize the message
+   esw::PBMeasurementArray receivedData;
+   if (!receivedData.ParseFromArray(buffer.data(), messageSize)) {
+      throw std::runtime_error("Failed to parse Protobuf message");
+   }
+
+   // 3. Process data
+   esw::PBAvgDataArray responseData;
+   for (const auto &measurement : receivedData.datasets()) {
+      esw::PBAvgData avgData;
+      *avgData.mutable_info() = measurement.info();
+
+      // Calculate averages
+      double totalDownload = 0;
+      double totalUpload = 0;
+      double totalPing = 0;
+      int count = measurement.download_size();
+
+      for (int i = 0; i < count; ++i) {
+         totalDownload += measurement.download(i);
+         totalUpload += measurement.upload(i);
+         totalPing += measurement.ping(i);
+      }
+
+      if (count > 0) {
+         avgData.set_download(totalDownload / count);
+         avgData.set_upload(totalUpload / count);
+         avgData.set_ping(totalPing / count);
+      }
+
+      *responseData.add_dataarray() = avgData;
+   }
+   auto test = responseData.mutable_dataarray();
+   std::vector<esw::PBAvgData> test2(test->begin(), test->end());
+
+   // Step 4: Serialize the response
+   std::string output;
+   if (!responseData.SerializeToString(&output)) {
+      throw std::runtime_error("Failed to serialize response data");
+   }
+
+   std::cout << "Sending bytes: " << output.size() << std::endl;
+
+   // Step 5: Write the response back
+   int size = output.size();
+   stream.write(reinterpret_cast<const char *>(&size), 4);
+
+   stream.write(output.c_str(),
+                output.size() +
+                    1); // Include the null character to maintain consistency
+   stream.flush();
 }
 
 int main(int argc, char *argv[])
@@ -223,7 +186,6 @@ int main(int argc, char *argv[])
             throw std::logic_error("Protocol not yet implemented");
          }
       }
-
    } catch (std::exception &e) {
       std::cerr << "Exception: " << e.what() << std::endl;
       return 1;

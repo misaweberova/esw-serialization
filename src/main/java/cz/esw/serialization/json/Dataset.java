@@ -34,4 +34,27 @@ public class Dataset {
     public void setRecords(Map<DataType, List<Double>> records) {
         this.records = records;
     }
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Dataset{");
+        sb.append("info=").append(info).append(",\n");
+        sb.append("records={");
+
+        for (Map.Entry<DataType, List<Double>> entry : records.entrySet()) {
+            sb.append(entry.getKey()).append(": ").append(entry.getValue()).append(", ");
+        }
+
+        // Remove trailing comma and space
+        if (!records.isEmpty()) {
+            sb.setLength(sb.length() - 2);
+        }
+
+        sb.append("}");
+        sb.append("}");
+
+
+        return sb.toString();
+    }
+    
 }
